@@ -1,0 +1,1051 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<!--
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  暗算トレーニング(小学生向け・単一ファイル版)
+
+  ■ GAS_URL の貼り方
+    このすぐ下の <script> 内、CONFIG の GAS_URL に、
+    GAS ウェブアプリの「デプロイ URL」(https://script.google.com/macros/s/.../exec)
+    を貼ってください。空欄のままだと「おためしモード」(デモ生徒・送信なし)で動きます。
+
+  ■ GitHub Pages への置き方
+    1. リポジトリを作り、この index.html をルートに置いて push
+    2. リポジトリの Settings → Pages → Branch を main / (root) にして Save
+    3. 表示された URL(https://ユーザー名.github.io/リポジトリ名/)を iPad の Safari で開く
+    ビルド不要・外部依存なし。このファイル1つで動きます。
+
+  ■ 通信は「起動時 GET(?action=init)」と「終了時 POST(text/plain)」の2回のみ。
+    送信失敗時は localStorage に退避し、次回起動時に自動再送します。
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+-->
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<title>暗算トレーニング</title>
+<style>
+  :root{
+    --bg:#fdf8ee;
+    --card:#ffffff;
+    --ink:#3a3a3a;
+    --primary:#3b82d6;
+    --primary-dark:#2b66ab;
+    --accent:#f5a623;
+    --good:#e0503c;
+    --bad:#3b6fd6;
+    --key:#ffffff;
+    --key-edge:#d8d2c4;
+    --radius:22px;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent; user-select:none; -webkit-user-select:none;}
+  html,body{height:100%; margin:0; overscroll-behavior:none; touch-action:manipulation;}
+  body{
+    background:var(--bg); color:var(--ink);
+    font-family:"Hiragino Maru Gothic ProN","ヒラギノ丸ゴ ProN W4","Hiragino Kaku Gothic ProN",-apple-system,"BIZ UDGothic",sans-serif;
+    display:flex; flex-direction:column;
+  }
+  .screen{display:none; flex:1; flex-direction:column; align-items:center; justify-content:center;
+    padding:max(12px, env(safe-area-inset-top)) 16px max(12px, env(safe-area-inset-bottom)); min-height:0;}
+  .screen.active{display:flex;}
+  h1{font-size:clamp(22px,4.5vmin,34px); margin:8px 0; color:var(--primary-dark);}
+  .btn{
+    border:none; border-radius:var(--radius); cursor:pointer;
+    background:var(--primary); color:#fff;
+    font-family:inherit; font-size:clamp(20px,3.5vmin,28px); font-weight:bold;
+    padding:16px 40px; min-height:64px;
+    box-shadow:0 4px 0 var(--primary-dark);
+  }
+  .btn:active{transform:translateY(3px); box-shadow:0 1px 0 var(--primary-dark);}
+  .btn.sub{background:#9aa5b1; box-shadow:0 4px 0 #6f7883; font-size:clamp(16px,2.8vmin,22px); min-height:52px; padding:10px 28px;}
+  .btn.warn{background:var(--accent); box-shadow:0 4px 0 #c07f0d;}
+  .banner{
+    background:#fff3d6; border:2px solid var(--accent); border-radius:14px;
+    padding:8px 14px; margin:6px 0; font-size:clamp(13px,2.4vmin,17px); color:#7a5200; text-align:center;
+  }
+  .spinner{width:52px;height:52px;border:6px solid #e5ddca;border-top-color:var(--primary);border-radius:50%;animation:spin 0.9s linear infinite;}
+  @keyframes spin{to{transform:rotate(360deg)}}
+
+  /* ---- なまえ選択 ---- */
+  #scr-names{justify-content:flex-start;}
+  #scr-names header{width:100%; max-width:1000px; display:flex; align-items:center; gap:10px; flex-wrap:wrap; justify-content:center;}
+  #name-grid{
+    width:100%; max-width:1000px; flex:1; overflow-y:auto; -webkit-overflow-scrolling:touch;
+    display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr));
+    gap:12px; padding:10px 2px 24px; align-content:start;
+  }
+  .name-tile{
+    background:var(--card); border:none; border-radius:18px; cursor:pointer;
+    box-shadow:0 3px 0 var(--key-edge);
+    padding:14px 8px; display:flex; flex-direction:column; align-items:center; gap:4px;
+    font-family:inherit; color:var(--ink);
+  }
+  .name-tile:active{transform:translateY(2px); box-shadow:0 1px 0 var(--key-edge);}
+  .name-tile .nm{font-size:clamp(20px,3.4vmin,27px); font-weight:bold;}
+  .name-tile .meta{font-size:13px; color:#8b8574;}
+  .name-tile .lv{background:var(--primary); color:#fff; border-radius:999px; padding:2px 12px; font-size:14px; font-weight:bold;}
+
+  /* ---- スタート ---- */
+  .start-card{background:var(--card); border-radius:26px; box-shadow:0 4px 0 var(--key-edge);
+    padding:34px 40px; text-align:center; max-width:640px; width:min(92vw,640px);}
+  .start-card .who{font-size:clamp(30px,6vmin,46px); font-weight:bold; margin-bottom:10px;}
+  .start-card .lvbig{display:inline-block; background:#eaf2fc; color:var(--primary-dark); border-radius:16px;
+    padding:10px 22px; font-size:clamp(18px,3.4vmin,26px); font-weight:bold; margin-bottom:26px; line-height:1.5;}
+
+  /* ---- 問題 ---- */
+  #scr-quiz{justify-content:flex-start; padding-top:max(8px, env(safe-area-inset-top));}
+  .quiz-head{width:100%; max-width:1100px; display:flex; align-items:center; gap:12px; padding:2px 4px;}
+  .quiz-head .who2{font-size:clamp(14px,2.6vmin,19px); color:#8b8574; font-weight:bold;}
+  .quiz-head .prog{margin-left:auto; font-size:clamp(20px,3.6vmin,28px); font-weight:bold; color:var(--primary-dark);}
+  .pbar{width:100%; max-width:1100px; height:10px; background:#eee6d2; border-radius:99px; overflow:hidden; margin:4px 0 6px;}
+  .pbar>div{height:100%; width:0%; background:var(--accent); border-radius:99px; transition:width .25s;}
+  .quiz-main{width:100%; max-width:1100px; flex:1; min-height:0; display:flex; flex-direction:column; gap:10px;}
+  .q-card{
+    background:var(--card); border-radius:26px; box-shadow:0 4px 0 var(--key-edge);
+    flex:1; min-height:0; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:2vmin;
+    padding:12px; position:relative;
+  }
+  #qtext{font-size:clamp(38px,9vmin,92px); font-weight:bold; letter-spacing:.04em; text-align:center; line-height:1.25;}
+  #qtext.long{font-size:clamp(28px,6.4vmin,64px);}
+  .fr{display:inline-flex; flex-direction:column; vertical-align:middle; text-align:center; margin:0 .12em; line-height:1.05; transform:translateY(-0.08em);}
+  .fr b{font-weight:inherit; border-bottom:.09em solid currentColor; padding:0 .18em; font-size:.72em;}
+  .fr i{font-style:normal; padding:0 .18em; font-size:.72em;}
+  #ansarea{display:flex; align-items:center; gap:12px;}
+  .abox{
+    min-width:2.2em; padding:.05em .25em; text-align:center;
+    font-size:clamp(30px,6.5vmin,58px); font-weight:bold;
+    background:#f6f2e7; border:4px solid #ddd5c2; border-radius:18px; min-height:1.5em; line-height:1.4em;
+  }
+  .frac-input .abox{font-size:clamp(22px,4.6vmin,40px); min-width:2em; min-height:1.35em; line-height:1.3em; border-radius:12px;}
+  .abox.active{border-color:var(--accent); background:#fff8e8;}
+  .abox.empty-flash{animation:flash .5s;}
+  @keyframes flash{0%,100%{border-color:var(--accent)}50%{border-color:var(--good); background:#ffe3de;}}
+  .frac-input{display:flex; flex-direction:column; align-items:center; gap:4px;}
+  .frac-input .bar{width:100%; height:5px; background:var(--ink); border-radius:3px;}
+  #ansarea{flex-shrink:0; padding-bottom:6px;}
+  .q-card #qtext{flex-shrink:1; min-height:0;}
+  .qr-label{font-size:clamp(18px,3.4vmin,28px); font-weight:bold; color:#8b8574;}
+
+  .pad-wrap{display:flex; flex-direction:column; gap:10px; align-items:center; padding-bottom:4px;}
+  #keypad{display:grid; grid-template-columns:repeat(3,1fr); gap:10px; width:min(92vw,430px);}
+  .key{
+    font-family:inherit; font-size:clamp(26px,5.4vmin,42px); font-weight:bold; color:var(--ink);
+    background:var(--key); border:none; border-radius:18px; cursor:pointer;
+    height:clamp(56px,9.5vmin,80px);
+    box-shadow:0 4px 0 var(--key-edge);
+  }
+  .key:active{transform:translateY(3px); box-shadow:0 1px 0 var(--key-edge);}
+  .key.ghost{visibility:hidden;}
+  .key.del{color:var(--good); font-size:clamp(22px,4.4vmin,34px);}
+  #btn-submit{
+    width:min(92vw,430px); min-height:clamp(58px,9.5vmin,78px);
+    background:#43a047; box-shadow:0 4px 0 #2e6f31; font-size:clamp(24px,4.6vmin,36px);
+  }
+  #btn-submit:active{box-shadow:0 1px 0 #2e6f31;}
+  #btn-submit:disabled{opacity:.55;}
+
+  @media (orientation:landscape) and (max-height:620px){
+    .quiz-main{flex-direction:row; align-items:stretch;}
+    .q-card{flex:1.2;}
+    .pad-wrap{justify-content:center;}
+    #keypad{width:min(44vw,400px);}
+    #btn-submit{width:min(44vw,400px);}
+  }
+
+  /* ---- 正誤オーバーレイ ---- */
+  #feedback{position:fixed; inset:0; display:none; align-items:center; justify-content:center; flex-direction:column;
+    background:rgba(253,248,238,.72); z-index:50; pointer-events:none;}
+  #feedback.show{display:flex;}
+  #fb-mark{font-size:clamp(120px,38vmin,340px); font-weight:bold; line-height:1; animation:pop .3s;}
+  #fb-mark.good{color:var(--good);}
+  #fb-mark.bad{color:var(--bad);}
+  #fb-ans{font-size:clamp(24px,5vmin,44px); font-weight:bold; color:var(--ink); background:#fff; border-radius:16px; padding:8px 22px; box-shadow:0 3px 0 var(--key-edge);}
+  @keyframes pop{0%{transform:scale(.4); opacity:0;}100%{transform:scale(1); opacity:1;}}
+
+  /* ---- 結果 ---- */
+  .result-card{background:var(--card); border-radius:26px; box-shadow:0 4px 0 var(--key-edge);
+    padding:28px 34px; text-align:center; width:min(94vw,640px);}
+  .result-card .yay{font-size:clamp(30px,6vmin,46px); font-weight:bold; color:var(--accent); margin-bottom:8px;}
+  .stats{display:grid; grid-template-columns:1fr 1fr; gap:12px; margin:14px 0 18px;}
+  .stat{background:#f6f2e7; border-radius:18px; padding:12px 6px;}
+  .stat .k{font-size:clamp(13px,2.4vmin,17px); color:#8b8574; font-weight:bold;}
+  .stat .v{font-size:clamp(30px,6vmin,48px); font-weight:bold; color:var(--primary-dark);}
+  #rs-time{font-size:clamp(20px,4.2vmin,34px); white-space:nowrap; line-height:2.2;}
+  #send-status{min-height:1.6em; font-size:clamp(15px,2.8vmin,20px); font-weight:bold; margin-bottom:12px;}
+  #send-status.ok{color:#2e7d32;} #send-status.ng{color:#b3541e;}
+</style>
+</head>
+<body>
+
+<!-- よみこみ中 -->
+<section class="screen active" id="scr-loading">
+  <div class="spinner"></div>
+  <h1>よみこみちゅう…</h1>
+</section>
+
+<!-- 通信エラー -->
+<section class="screen" id="scr-error">
+  <h1>つながりませんでした</h1>
+  <p style="font-size:18px; text-align:center; max-width:480px;">せんせいをよぶか、でんぱのよいところで<br>「さいよみこみ」をおしてね。</p>
+  <button class="btn" onclick="location.reload()">さいよみこみ</button>
+</section>
+
+<!-- なまえ選択 -->
+<section class="screen" id="scr-names">
+  <header>
+    <h1>なまえをえらんでね</h1>
+    <button class="btn sub" onclick="location.reload()">さいよみこみ</button>
+    <button class="btn sub warn" id="btn-resend" style="display:none;"></button>
+  </header>
+  <div id="names-banner"></div>
+  <div id="name-grid"></div>
+</section>
+
+<!-- スタート -->
+<section class="screen" id="scr-start">
+  <div class="start-card">
+    <div class="who" id="st-name"></div>
+    <div class="lvbig" id="st-level"></div>
+    <div>
+      <button class="btn" id="btn-begin" style="font-size:clamp(26px,5vmin,38px); padding:18px 64px;">はじめる</button>
+    </div>
+    <div style="margin-top:18px;">
+      <button class="btn sub" id="btn-back-names">← なまえをえらびなおす</button>
+    </div>
+  </div>
+</section>
+
+<!-- 問題 -->
+<section class="screen" id="scr-quiz">
+  <div class="quiz-head">
+    <span class="who2" id="qz-who"></span>
+    <span class="prog" id="qz-prog"></span>
+  </div>
+  <div class="pbar"><div id="qz-bar"></div></div>
+  <div class="quiz-main">
+    <div class="q-card">
+      <div id="qtext"></div>
+      <div id="ansarea"></div>
+    </div>
+    <div class="pad-wrap">
+      <div id="keypad"></div>
+      <button class="btn" id="btn-submit">けってい</button>
+    </div>
+  </div>
+</section>
+
+<!-- 正誤表示 -->
+<div id="feedback"><div id="fb-mark"></div><div id="fb-ans" style="display:none;"></div></div>
+
+<!-- 結果 -->
+<section class="screen" id="scr-result">
+  <div class="result-card">
+    <div class="yay">おつかれさま!</div>
+    <div id="rs-who" style="font-size:clamp(18px,3.4vmin,26px); font-weight:bold;"></div>
+    <div class="stats">
+      <div class="stat"><div class="k">もんだいすう</div><div class="v" id="rs-total"></div></div>
+      <div class="stat"><div class="k">せいかい</div><div class="v" id="rs-correct"></div></div>
+      <div class="stat"><div class="k">せいかいりつ</div><div class="v" id="rs-rate"></div></div>
+      <div class="stat"><div class="k">かかったじかん</div><div class="v" id="rs-time"></div></div>
+    </div>
+    <div id="send-status"></div>
+    <button class="btn" id="btn-home">もどる</button>
+  </div>
+</section>
+
+<script>
+/* ================================================================
+ * ロジック部(設定・レベル定義・問題生成)— DOM 非依存
+ * ================================================================ */
+
+/* ---------- 設定定数 ---------- */
+const CONFIG = {
+  GAS_URL: "https://script.google.com/macros/s/AKfycbwbn7YAfUw6ABPyYdUh2flxp-mEqZasvJYSByDnW1rFJ1IQSoV36StZNc4Gq1n7O62Z/exec",                    // ← ここに GAS ウェブアプリの URL を貼る(…/exec)
+  PROBLEMS_PER_SESSION: 20,       // 1回の問題数
+  SHOW_IMMEDIATE_FEEDBACK: true,  // ○×の即時表示(true/false)
+  SECRET: ""                      // GAS 側(コード.gs の SECRET)と同じ合言葉。空なら送らない。起動GETには ?secret=、終了POSTには本文 secret として付く
+};
+
+/* ---------- レベル定義(levels.json 埋め込み) ----------
+ * 注意: 元データの Lv25〜44 の genHint は互いにズレて別レベルの説明が
+ * 入っているため、生成ロジックは label / op / range / carry / examples
+ * に従って実装している(生成結果が examples と同種になることを優先)。 */
+const LEVELS_DATA = {
+  "version": 1,
+  "title": "小学生の四則演算 暗算ラダー(50段階)",
+  "levels": [
+    {"id":1,"category":"1年　1桁の加減","grade":"1年","label":"1桁+1桁 繰り上がりなし(和≦9)","op":"+","range":"和≦9","carry":"なし","examples":["3+5","2+6"]},
+    {"id":2,"category":"1年　1桁の加減","grade":"1年","label":"1桁−1桁 繰り下がりなし","op":"−","range":"1桁−1桁","carry":"なし","examples":["9−4","7−2"]},
+    {"id":3,"category":"1年　1桁の加減","grade":"1年","label":"10をつくるたし算(補数)","op":"+","range":"和=10","carry":"―","examples":["7+3","6+4"],"genHint":"たし算で和がちょうど10になる問題。a=1〜9、b=10−a。"},
+    {"id":4,"category":"1年　1桁の加減","grade":"1年","label":"10からひく(補数)","op":"−","range":"10−□","carry":"―","examples":["10−6","10−3"],"genHint":"10−a の形。a=1〜9。"},
+    {"id":5,"category":"1年　1桁の加減","grade":"1年","label":"加減混合(1桁・繰り上がり繰り下がりなし)","op":"+−","range":"1桁","carry":"なし","examples":["4+3","8−5"],"genHint":"1桁の + と − をランダムに出題。繰り上がり・繰り下がりなし。"},
+    {"id":6,"category":"1年　1桁の加減","grade":"1年","label":"1桁+1桁 繰り上がりあり(和11〜18)","op":"+","range":"和11〜18","carry":"あり","examples":["8+6","7+9"],"genHint":"1桁+1桁で繰り上がりあり(和は11〜18)。"},
+    {"id":7,"category":"1年　1桁の加減","grade":"1年","label":"十何−1桁 繰り下がりあり","op":"−","range":"11〜18−1桁","carry":"あり","examples":["15−7","13−8"],"genHint":"十何−1桁で繰り下がりあり(例:15−7)。答えは1桁。"},
+    {"id":8,"category":"1年　1桁の加減","grade":"1〜2年","label":"加減混合(〜20・繰り上がり繰り下がりあり)","op":"+−","range":"〜20","carry":"あり","examples":["8+7","15−9"],"genHint":"20までの + と − をランダム。繰り上がり・繰り下がりを含む。答えが負にならないようにする。"},
+    {"id":9,"category":"1〜2年　2桁±1桁","grade":"1〜2年","label":"2桁+1桁 繰り上がりなし","op":"+","range":"2桁+1桁","carry":"なし","examples":["34+5","62+3"]},
+    {"id":10,"category":"1〜2年　2桁±1桁","grade":"1〜2年","label":"2桁−1桁 繰り下がりなし","op":"−","range":"2桁−1桁","carry":"なし","examples":["47−5","68−3"]},
+    {"id":11,"category":"1〜2年　2桁±1桁","grade":"1〜2年","label":"2桁+1桁 繰り上がりあり","op":"+","range":"2桁+1桁","carry":"あり","examples":["38+7","55+8"]},
+    {"id":12,"category":"1〜2年　2桁±1桁","grade":"1〜2年","label":"2桁−1桁 繰り下がりあり","op":"−","range":"2桁−1桁","carry":"あり","examples":["42−6","53−8"]},
+    {"id":13,"category":"2年　何十・2桁の加減","grade":"2年","label":"何十+何十","op":"+","range":"何十","carry":"―","examples":["40+30","60+70"],"genHint":"何十+何十(例:40+30)。両項とも10の倍数。"},
+    {"id":14,"category":"2年　何十・2桁の加減","grade":"2年","label":"何十−何十","op":"−","range":"何十","carry":"―","examples":["80−30","120−50"],"genHint":"何十−何十(例:80−30)。両項とも10の倍数、答えが負にならないよう a≥b。"},
+    {"id":15,"category":"2年　何十・2桁の加減","grade":"2年","label":"2桁+2桁 繰り上がりなし","op":"+","range":"2桁+2桁","carry":"なし","examples":["23+45","34+52"]},
+    {"id":16,"category":"2年　何十・2桁の加減","grade":"2年","label":"2桁−2桁 繰り下がりなし","op":"−","range":"2桁−2桁","carry":"なし","examples":["68−34","79−25"]},
+    {"id":17,"category":"2年　何十・2桁の加減","grade":"2年","label":"2桁+2桁 繰り上がりあり","op":"+","range":"2桁+2桁","carry":"あり","examples":["27+48","56+37"]},
+    {"id":18,"category":"2年　何十・2桁の加減","grade":"2年","label":"2桁−2桁 繰り下がりあり","op":"−","range":"2桁−2桁","carry":"あり","examples":["63−28","82−47"]},
+    {"id":19,"category":"2年　何十・2桁の加減","grade":"2年","label":"100の補数","op":"+−","range":"100","carry":"―","examples":["100−65","35+□=100"],"genHint":"100−n(n=11〜99)と、n+□=100 の穴埋めを混在させる。"},
+    {"id":20,"category":"2年　何十・2桁の加減","grade":"2年","label":"2桁の加減混合(繰り上がり繰り下がりあり)","op":"+−","range":"2桁","carry":"あり","examples":["46+38","72−45"]},
+    {"id":21,"category":"2年　九九","grade":"2年","label":"かけ算の意味・2,5,10の段","op":"×","range":"九九一部","carry":"―","examples":["2×6","5×4","10×3"],"genHint":"九九のうち2・5・10の段。一方の因数を2,5,10のいずれかに固定。"},
+    {"id":22,"category":"2年　九九","grade":"2年","label":"九九(2〜5の段)","op":"×","range":"九九","carry":"―","examples":["3×7","4×8"]},
+    {"id":23,"category":"2年　九九","grade":"2年","label":"九九(6〜9の段)","op":"×","range":"九九","carry":"―","examples":["7×8","6×9"]},
+    {"id":24,"category":"2年　九九","grade":"2年","label":"九九 全段ランダム","op":"×","range":"九九","carry":"―","examples":["8×7","9×6"]},
+    {"id":25,"category":"2〜3年　加減乗の混合・3桁の加減","grade":"2〜3年","label":"たし・ひき・かけの混合(やさしい)","op":"+−×","range":"やさしい","carry":"―","examples":["6+3","4×2","9−5"]},
+    {"id":26,"category":"2〜3年　加減乗の混合・3桁の加減","grade":"3年","label":"3桁の加減(暗算しやすい数)","op":"+−","range":"3桁","carry":"あり","examples":["250+180","400−175"]},
+    {"id":27,"category":"2〜3年　加減乗の混合・3桁の加減","grade":"3〜4年","label":"3口以上の加減","op":"+−","range":"3口以上","carry":"あり","examples":["25+17−12","40−15+8"]},
+    {"id":28,"category":"3年　かけ算の発展","grade":"3年","label":"×10・×100(位取り)","op":"×","range":"×10, ×100","carry":"―","examples":["6×10","8×100"]},
+    {"id":29,"category":"3年　かけ算の発展","grade":"3年","label":"何十×1桁","op":"×","range":"何十×1桁","carry":"―","examples":["30×3","60×2"]},
+    {"id":30,"category":"3年　かけ算の発展","grade":"3年","label":"2桁×1桁 繰り上がりなし","op":"×","range":"2桁×1桁","carry":"なし","examples":["21×4","32×3"]},
+    {"id":31,"category":"3年　かけ算の発展","grade":"3年","label":"2桁×1桁 繰り上がりあり","op":"×","range":"2桁×1桁","carry":"あり","examples":["27×3","48×2"]},
+    {"id":32,"category":"3年　かけ算の発展","grade":"3年","label":"何十×何十","op":"×","range":"何十×何十","carry":"―","examples":["40×20","30×30"]},
+    {"id":33,"category":"3年　かけ算の発展","grade":"3〜4年","label":"工夫して解くかけ算(3口・きりのよい数)","op":"×","range":"3口・特殊","carry":"―","examples":["2×9×5","25×4"]},
+    {"id":34,"category":"3年　わり算・四則混合","grade":"3年","label":"わり算の意味・九九の逆(あまりなし)","op":"÷","range":"九九範囲","carry":"あまりなし","examples":["18÷6","24÷4"]},
+    {"id":35,"category":"3年　わり算・四則混合","grade":"3年","label":"何十÷1桁(わり切れる)","op":"÷","range":"何十÷1桁","carry":"あまりなし","examples":["60÷2","90÷3"]},
+    {"id":36,"category":"3年　わり算・四則混合","grade":"3年","label":"あまりのあるわり算(九九範囲)","op":"÷","range":"九九範囲","carry":"あまりあり","examples":["17÷5","23÷4"]},
+    {"id":37,"category":"3年　わり算・四則混合","grade":"3〜4年","label":"÷10・÷100(位取り)","op":"÷","range":"÷10, ÷100","carry":"あまりなし","examples":["70÷10","500÷100"]},
+    {"id":38,"category":"3年　わり算・四則混合","grade":"3〜4年","label":"2桁÷1桁 わり切れる(各位で割れる)","op":"÷","range":"2桁÷1桁","carry":"あまりなし","examples":["48÷4","66÷2"]},
+    {"id":39,"category":"3年　わり算・四則混合","grade":"3年","label":"四則混合(九九＋加減・2桁)","op":"+−×÷","range":"2桁・九九","carry":"あり","examples":["24+8","6×7","45−9"]},
+    {"id":40,"category":"4年　乗除の発展・計算の順番","grade":"4年","label":"2桁÷1桁 わり切れる(工夫が必要)","op":"÷","range":"2桁÷1桁","carry":"あまりなし","examples":["72÷3","91÷7"]},
+    {"id":41,"category":"4年　乗除の発展・計算の順番","grade":"4年","label":"2桁÷1桁 あまりあり","op":"÷","range":"2桁÷1桁","carry":"あまりあり","examples":["58÷4","75÷6"]},
+    {"id":42,"category":"4年　乗除の発展・計算の順番","grade":"4年","label":"何百÷1桁(わり切れる)","op":"÷","range":"何百÷1桁","carry":"あまりなし","examples":["600÷3","800÷4"]},
+    {"id":43,"category":"4年　乗除の発展・計算の順番","grade":"4年","label":"何十でわる","op":"÷","range":"÷何十","carry":"―","examples":["120÷40","150÷30"]},
+    {"id":44,"category":"4年　乗除の発展・計算の順番","grade":"4年","label":"計算の順番・かっこ","op":"混合","range":"かっこ・順序","carry":"―","examples":["3+4×2","(5+3)×2"],"genHint":"演算の順序(3+4×2)と、かっこ((5+3)×2)。答えは整数になる範囲。"},
+    {"id":45,"category":"3〜5年　小数・分数","grade":"3〜4年","label":"小数の加減(0.1の位)","op":"+−","range":"小数第1位","carry":"―","examples":["0.7+0.5","1.2−0.8"],"genHint":"0.1の位までの小数の加減(例:0.7+0.5)。"},
+    {"id":46,"category":"3〜5年　小数・分数","grade":"4年","label":"同分母分数の加減","op":"+−","range":"同分母","carry":"―","examples":["1/5+2/5","3/4−1/4"],"genHint":"分母が同じ分数の加減(例:1/5+2/5)。答えの約分方針はアプリ内で統一する。"},
+    {"id":47,"category":"3〜5年　小数・分数","grade":"4〜5年","label":"小数×整数・小数×10","op":"×","range":"小数×整数","carry":"―","examples":["0.3×4","0.6×10"],"genHint":"小数×整数、小数×10(例:0.3×4、0.6×10)。"},
+    {"id":48,"category":"5〜6年・総合","grade":"5〜6年","label":"□を求める計算(逆算・倍と割合)","op":"混合","range":"逆算","carry":"―","examples":["□×3=12","15は3の□倍"],"genHint":"□を求める逆算(例:□×3=12)や、倍・割合(例:15は3の□倍)。"},
+    {"id":49,"category":"5〜6年・総合","grade":"6年","label":"分数×整数(やさしい)","op":"×","range":"分数×整数","carry":"―","examples":["1/2×4","2/3×3"],"genHint":"分数×整数(例:1/2×4)。"},
+    {"id":50,"category":"5〜6年・総合","grade":"全","label":"総合ランダム(全レベルから出題・スピード)","op":"全","range":"全範囲","carry":"―","examples":["全範囲"],"genHint":"Lv1〜49 からランダムに出題。難易度をばらつかせる総合モード。"}
+  ]
+};
+const LEVEL_BY_ID = {};
+LEVELS_DATA.levels.forEach(l => LEVEL_BY_ID[l.id] = l);
+
+/* ---------- 生成ヘルパー ---------- */
+function ri(a, b){ return a + Math.floor(Math.random() * (b - a + 1)); }   // a..b の整数
+function pick(arr){ return arr[Math.floor(Math.random() * arr.length)]; }
+function coin(){ return Math.random() < 0.5; }
+function gcd(a, b){ while(b){ [a, b] = [b, a % b]; } return a; }
+function frHTML(n, d){ return `<span class="fr"><b>${n}</b><i>${d}</i></span>`; }
+function fmt1(tenths){ // 10分の1単位の整数 → "1.2" / "3" 表示
+  return tenths % 10 === 0 ? String(tenths / 10) : (tenths / 10).toFixed(1);
+}
+
+/* 問題オブジェクト: {q: 表示HTML, ans: 正答, key: 重複判定用キー}
+ * ans の種類:
+ *   {t:'int',  v}          … 整数
+ *   {t:'dec',  v}          … 小数(「.」キー付き)
+ *   {t:'frac', n, d}       … 分数(分子/分母の2枠。約分は答えが既約になるよう生成し、同値分数も正解扱い)
+ *   {t:'qr',   q, r}       … 商とあまりの2枠 */
+function P(q, ans, key){ return { q, ans, key: key || q }; }
+const addP = (a, b) => P(`${a}+${b}`, {t:'int', v:a+b});
+const subP = (a, b) => P(`${a}−${b}`, {t:'int', v:a-b});
+const mulP = (a, b) => P(`${a}×${b}`, {t:'int', v:a*b});
+const divP = (a, b) => P(`${a}÷${b}`, {t:'int', v:a/b});
+
+/* ---------- 各レベルの生成関数 ---------- */
+const G = {
+  // Lv1: 1桁+1桁 和≦9
+  1: () => { const a = ri(1, 8), b = ri(1, 9 - a); return addP(a, b); },
+  // Lv2: 1桁−1桁 繰り下がりなし
+  2: () => { const a = ri(2, 9), b = ri(1, a - 1); return subP(a, b); },
+  // Lv3: 和が10
+  3: () => { const a = ri(1, 9); return addP(a, 10 - a); },
+  // Lv4: 10−□
+  4: () => { const a = ri(1, 9); return subP(10, a); },
+  // Lv5: 1桁の加減混合(繰り上下なし)
+  5: () => coin() ? G[1]() : G[2](),
+  // Lv6: 1桁+1桁 和11〜18
+  6: () => { const a = ri(2, 9), b = ri(Math.max(2, 11 - a), 9); return addP(a, b); },
+  // Lv7: 十何−1桁 繰り下がりあり
+  7: () => { const a = ri(11, 18), b = ri(a - 10 + 1, 9); return subP(a, b); },
+  // Lv8: 〜20 加減混合(繰り上下あり)
+  8: () => coin() ? G[6]() : G[7](),
+  // Lv9: 2桁+1桁 繰り上がりなし
+  9: () => { const t = ri(1, 9), o = ri(0, 8), b = ri(1, 9 - o); return addP(t*10 + o, b); },
+  // Lv10: 2桁−1桁 繰り下がりなし
+  10: () => { const t = ri(1, 9), o = ri(1, 9), b = ri(1, o); return subP(t*10 + o, b); },
+  // Lv11: 2桁+1桁 繰り上がりあり(答えは2桁のまま)
+  11: () => { const t = ri(1, 8), o = ri(1, 9), b = ri(10 - o, 9); return addP(t*10 + o, b); },
+  // Lv12: 2桁−1桁 繰り下がりあり
+  12: () => { const t = ri(1, 9), o = ri(0, 8), b = ri(o + 1, 9); return subP(t*10 + o, b); },
+  // Lv13: 何十+何十
+  13: () => addP(ri(1, 9) * 10, ri(1, 9) * 10),
+  // Lv14: 何十−何十(120−50 のような十いくつも可)
+  14: () => { const a = ri(3, 12) * 10, b = ri(1, a/10 - 1) * 10; return subP(a, b); },
+  // Lv15: 2桁+2桁 繰り上がりなし
+  15: () => {
+    for(let i = 0; i < 30; i++){
+      const ta = ri(1, 8), tb = ri(1, 9 - ta), oa = ri(0, 9), ob = ri(0, 9 - oa);
+      if(oa === 0 && ob === 0) continue;                 // 何十+何十は Lv13 の内容なので避ける
+      return addP(ta*10 + oa, tb*10 + ob);
+    }
+    return addP(23, 45);
+  },
+  // Lv16: 2桁−2桁 繰り下がりなし
+  16: () => {
+    for(let i = 0; i < 30; i++){
+      const ta = ri(2, 9), tb = ri(1, ta), oa = ri(0, 9), ob = ri(0, oa);
+      const a = ta*10 + oa, b = tb*10 + ob;
+      if(a === b || (oa === 0 && ob === 0)) continue;
+      return subP(a, b);
+    }
+    return subP(68, 34);
+  },
+  // Lv17: 2桁+2桁 繰り上がりあり(答えは2桁のまま)
+  17: () => { const ta = ri(1, 7), tb = ri(1, 8 - ta), oa = ri(1, 9), ob = ri(10 - oa, 9); return addP(ta*10 + oa, tb*10 + ob); },
+  // Lv18: 2桁−2桁 繰り下がりあり
+  18: () => { const ta = ri(2, 9), tb = ri(1, ta - 1), oa = ri(0, 8), ob = ri(oa + 1, 9); return subP(ta*10 + oa, tb*10 + ob); },
+  // Lv19: 100の補数(100−n と n+□=100 の穴埋めを混在)
+  19: () => {
+    const n = ri(11, 99);
+    if(coin()) return subP(100, n);
+    return P(`${n}+□=100`, {t:'int', v:100 - n});
+  },
+  // Lv20: 2桁の加減混合(繰り上下あり)
+  20: () => coin() ? G[17]() : G[18](),
+  // Lv21: 2・5・10の段
+  21: () => mulP(pick([2, 5, 10]), ri(2, 9)),
+  // Lv22: 九九 2〜5の段
+  22: () => mulP(ri(2, 5), ri(2, 9)),
+  // Lv23: 九九 6〜9の段
+  23: () => mulP(ri(6, 9), ri(2, 9)),
+  // Lv24: 九九 全段
+  24: () => mulP(ri(2, 9), ri(2, 9)),
+  // Lv25: たし・ひき・かけの混合(やさしい)
+  25: () => {
+    const r = ri(0, 2);
+    if(r === 0) return G[1]();
+    if(r === 1) return G[2]();
+    return mulP(ri(2, 5), ri(2, 6));
+  },
+  // Lv26: 3桁の加減(きりのよい暗算しやすい数)
+  26: () => {
+    if(coin()){
+      return addP(ri(11, 50) * 10, ri(11, 40) * 10);      // 例: 250+180
+    }
+    const a = ri(2, 9) * 100, b = ri(1, a/25 - 1) * 25;   // 例: 400−175
+    return subP(a, b);
+  },
+  // Lv27: 3口以上の加減(左から計算・途中も負にならない)
+  27: () => {
+    const opsN = Math.random() < 0.3 ? 3 : 2;             // 3口(75%)/4口(25%)
+    let run = ri(15, 60), txt = String(run);
+    for(let i = 0; i < opsN; i++){
+      const canAdd = run <= 94, canSub = run >= 6;
+      const doAdd = canSub ? (canAdd ? coin() : false) : true;
+      if(doAdd){ const b = ri(5, Math.min(30, 99 - run)); run += b; txt += `+${b}`; }
+      else     { const b = ri(5, Math.min(30, run - 1));  run -= b; txt += `−${b}`; }
+    }
+    return P(txt, {t:'int', v:run});
+  },
+  // Lv28: ×10・×100
+  28: () => mulP(ri(1, 9), pick([10, 100])),
+  // Lv29: 何十×1桁
+  29: () => mulP(ri(2, 9) * 10, ri(2, 9)),
+  // Lv30: 2桁×1桁 繰り上がりなし(各位の積が9以下)
+  30: () => { const b = ri(2, 4), t = ri(1, Math.floor(9 / b)), o = ri(1, Math.floor(9 / b)); return mulP(t*10 + o, b); },
+  // Lv31: 2桁×1桁 繰り上がりあり(積は2桁のまま)
+  31: () => {
+    for(let i = 0; i < 60; i++){
+      const b = ri(2, 8), o = ri(2, 9);
+      if(o * b < 10) continue;
+      const tMax = Math.floor((9 - Math.floor(o * b / 10)) / b);
+      if(tMax < 1) continue;
+      const t = ri(1, tMax);
+      return mulP(t*10 + o, b);
+    }
+    return mulP(27, 3);
+  },
+  // Lv32: 何十×何十(積は3600以下)
+  32: () => {
+    for(let i = 0; i < 30; i++){
+      const a = ri(2, 9), b = ri(2, 9);
+      if(a * b > 36) continue;
+      return mulP(a * 10, b * 10);
+    }
+    return mulP(40, 20);
+  },
+  // Lv33: 工夫して解くかけ算(3口・きりのよい数の定番プール)
+  33: () => {
+    const n = ri(3, 9);
+    const pool = [
+      P(`2×${n}×5`, {t:'int', v:10 * n}),
+      P(`5×${n}×2`, {t:'int', v:10 * n}),
+      P(`25×4`, {t:'int', v:100}),
+      P(`4×25`, {t:'int', v:100}),
+      P(`25×8`, {t:'int', v:200}),
+      P(`8×25`, {t:'int', v:200}),
+      P(`50×2`, {t:'int', v:100}),
+      P(`2×50`, {t:'int', v:100})
+    ];
+    return pick(pool);
+  },
+  // Lv34: 九九の逆(あまりなし)
+  34: () => { const b = ri(2, 9), q = ri(2, 9); return divP(b * q, b); },
+  // Lv35: 何十÷1桁(わり切れる)
+  35: () => {
+    for(let i = 0; i < 60; i++){
+      const b = ri(2, 9), a = ri(2, 9) * 10;
+      if(a % b !== 0) continue;
+      return divP(a, b);
+    }
+    return divP(60, 2);
+  },
+  // Lv36: あまりのあるわり算(九九範囲)→ 商とあまりの2枠入力
+  36: () => {
+    const b = ri(2, 9), q = ri(2, 9), r = ri(1, b - 1);
+    const a = b * q + r;
+    return P(`${a}÷${b}`, {t:'qr', q, r});
+  },
+  // Lv37: ÷10・÷100
+  37: () => { const n = ri(1, 9); return coin() ? divP(n * 10, 10) : divP(n * 100, 100); },
+  // Lv38: 2桁÷1桁(十の位・一の位がそれぞれ割り切れる)
+  38: () => {
+    const b = Math.random() < 0.8 ? ri(2, 4) : ri(5, 9);
+    const digits = [];
+    for(let d = b; d <= 9; d += b) digits.push(d);
+    const t = pick(digits), o = pick(digits);
+    return divP(t*10 + o, b);
+  },
+  // Lv39: 四則混合(2桁の加減・九九・九九の逆から1問)
+  39: () => {
+    const r = ri(0, 3);
+    if(r === 0) return G[11]();
+    if(r === 1) return G[12]();
+    if(r === 2) return mulP(ri(2, 9), ri(2, 9));
+    return G[34]();
+  },
+  // Lv40: 2桁÷1桁 わり切れる(各位では割れず工夫が必要)
+  40: () => {
+    for(let i = 0; i < 120; i++){
+      const b = ri(2, 9), qMax = Math.floor(99 / b);
+      if(qMax < 10) continue;
+      const q = ri(10, qMax), a = b * q;
+      if(a < 10 || a > 99) continue;
+      if(Math.floor(a / 10) % b === 0 && (a % 10) % b === 0) continue; // 各位で割れる=Lv38 相当は除外
+      return divP(a, b);
+    }
+    return divP(72, 3);
+  },
+  // Lv41: 2桁÷1桁 あまりあり(商は2桁)
+  41: () => {
+    for(let i = 0; i < 120; i++){
+      const b = ri(2, 9), qMax = Math.floor((99 - 1) / b);
+      if(qMax < 10) continue;
+      const q = ri(10, qMax);
+      const rMax = Math.min(b - 1, 99 - b * q);
+      if(rMax < 1) continue;
+      const r = ri(1, rMax);
+      return P(`${b * q + r}÷${b}`, {t:'qr', q, r});
+    }
+    return P(`58÷4`, {t:'qr', q:14, r:2});
+  },
+  // Lv42: 何百÷1桁(わり切れる・商もきりのよい数)
+  42: () => {
+    for(let i = 0; i < 120; i++){
+      const b = ri(2, 9), n = ri(1, 9), a = n * 100;
+      if(a % b !== 0 || (a / b) % 50 !== 0) continue;   // 例(600÷3=200)と同種の易しい商に限る
+      return divP(a, b);
+    }
+    return divP(600, 3);
+  },
+  // Lv43: 何十でわる
+  43: () => {
+    for(let i = 0; i < 60; i++){
+      const b = ri(2, 8) * 10, q = ri(2, 6);
+      if(b * q > 400) continue;
+      return divP(b * q, b);
+    }
+    return divP(120, 40);
+  },
+  // Lv44: 計算の順番・かっこ
+  44: () => {
+    const r = ri(0, 3);
+    if(r === 0){ // a+b×c
+      const a = ri(1, 9), b = ri(2, 6), c = ri(2, 6);
+      return P(`${a}+${b}×${c}`, {t:'int', v:a + b*c});
+    }
+    if(r === 1){ // a−b×c(負にならない)
+      const b = ri(2, 5), c = ri(2, 5), prod = b * c;
+      const a = ri(prod + 1, Math.min(99, prod + 12));
+      return P(`${a}−${b}×${c}`, {t:'int', v:a - prod});
+    }
+    if(r === 2){ // (a+b)×c
+      const a = ri(1, 9), b = ri(1, 9), c = ri(2, 5);
+      return P(`(${a}+${b})×${c}`, {t:'int', v:(a + b) * c});
+    }
+    // (a−b)×c
+    const a = ri(3, 9), b = ri(1, a - 1), c = ri(2, 5);
+    return P(`(${a}−${b})×${c}`, {t:'int', v:(a - b) * c});
+  },
+  // Lv45: 小数の加減(0.1の位)— 内部は「0.1単位の整数」で計算
+  45: () => {
+    const nm10 = (lo, hi) => { let x; do { x = ri(lo, hi); } while(x % 10 === 0); return x; };
+    if(coin()){
+      const x = nm10(1, 15), y = nm10(1, 15);
+      return P(`${fmt1(x)}+${fmt1(y)}`, {t:'dec', v:(x + y) / 10});
+    }
+    const x = nm10(3, 20), y = nm10(1, x - 1);
+    return P(`${fmt1(x)}−${fmt1(y)}`, {t:'dec', v:(x - y) / 10});
+  },
+  // Lv46: 同分母分数の加減(答えは真分数・既約になる組のみ出題。同値分数の入力も正解扱い)
+  46: () => {
+    for(let i = 0; i < 200; i++){
+      const d = ri(3, 9);
+      if(coin()){
+        const a = ri(1, d - 2), b = ri(1, d - 1 - a);
+        if(gcd(a + b, d) !== 1) continue;
+        return P(`${frHTML(a, d)}+${frHTML(b, d)}`, {t:'frac', n:a + b, d}, `f${a}/${d}+${b}/${d}`);
+      }
+      const a = ri(2, d - 1), b = ri(1, a - 1);
+      if(gcd(a - b, d) !== 1) continue;
+      return P(`${frHTML(a, d)}−${frHTML(b, d)}`, {t:'frac', n:a - b, d}, `f${a}/${d}-${b}/${d}`);
+    }
+    return P(`${frHTML(1, 5)}+${frHTML(2, 5)}`, {t:'frac', n:3, d:5}, 'f1/5+2/5');
+  },
+  // Lv47: 小数×整数・小数×10
+  47: () => {
+    if(coin()){
+      const n = ri(2, 9), k = ri(2, 9);
+      return P(`0.${n}×${k}`, {t:'dec', v:(n * k) / 10});
+    }
+    const n = ri(1, 9);
+    return P(`0.${n}×10`, {t:'dec', v:n});
+  },
+  // Lv48: □を求める逆算・倍と割合
+  48: () => {
+    const r = ri(0, 4);
+    if(r === 0){ const a = ri(2, 9), b = ri(2, 9); return P(`□×${b}=${a * b}`, {t:'int', v:a}); }
+    if(r === 1){ const a = ri(2, 9), b = ri(2, 9); return P(`${b}×□=${a * b}`, {t:'int', v:a}); }
+    if(r === 2){ const a = ri(5, 40), b = ri(5, 40); return P(`□+${b}=${a + b}`, {t:'int', v:a}); }
+    if(r === 3){ const a = ri(20, 60), b = ri(5, a - 5); return P(`□−${b}=${a - b}`, {t:'int', v:a}); }
+    const y = ri(2, 9), k = ri(2, 9);
+    return P(`${y * k}は${y}の□倍`, {t:'int', v:k});
+  },
+  // Lv49: 分数×整数(やさしい・答えが整数になる組)
+  49: () => {
+    for(let i = 0; i < 60; i++){
+      const d = ri(2, 6), a = ri(1, d - 1);
+      if(gcd(a, d) !== 1) continue;
+      const k = d * (d <= 6 && coin() ? ri(1, 2) : 1);
+      if(k > 12) continue;
+      return P(`${frHTML(a, d)}×${k}`, {t:'int', v:a * k / d}, `f${a}/${d}x${k}`);
+    }
+    return P(`${frHTML(1, 2)}×4`, {t:'int', v:2}, 'f1/2x4');
+  },
+  // Lv50: 総合ランダム(Lv1〜49)
+  50: () => G[ri(1, 49)]()
+};
+
+/* 連続重複を避けて1問生成 */
+let _lastKey = null;
+function makeProblem(levelId){
+  const id = Math.min(50, Math.max(1, Number(levelId) || 1));
+  let p = G[id]();
+  for(let i = 0; i < 15 && p.key === _lastKey; i++) p = G[id]();
+  _lastKey = p.key;
+  return p;
+}
+
+/* 正答の文字列表現(×のときの「こたえ」表示用) */
+function ansToText(ans){
+  if(ans.t === 'int') return String(ans.v);
+  if(ans.t === 'dec') return ans.v % 1 === 0 ? String(ans.v) : ans.v.toFixed(1);
+  if(ans.t === 'frac') return `${ans.n}/${ans.d}`;
+  if(ans.t === 'qr') return `${ans.q} あまり ${ans.r}`;
+  return '';
+}
+
+/* 入力(フィールド文字列の配列)と正答の照合 */
+function checkAnswer(ans, f){
+  if(ans.t === 'int'){
+    if(f[0] === '') return null;
+    return parseInt(f[0], 10) === ans.v;
+  }
+  if(ans.t === 'dec'){
+    if(f[0] === '' || f[0] === '.') return null;
+    return Math.abs(parseFloat(f[0]) - ans.v) < 1e-6;
+  }
+  if(ans.t === 'frac'){
+    if(f[0] === '' || f[1] === '') return null;
+    const n = parseInt(f[0], 10), d = parseInt(f[1], 10);
+    if(!d) return false;
+    return n * ans.d === ans.n * d;   // 同値分数(未約分)も正解扱い
+  }
+  if(ans.t === 'qr'){
+    if(f[0] === '' || f[1] === '') return null;
+    return parseInt(f[0], 10) === ans.q && parseInt(f[1], 10) === ans.r;
+  }
+  return false;
+}
+</script>
+
+<script>
+/* ================================================================
+ * アプリ部(画面・通信・保存)
+ * ================================================================ */
+(function(){
+'use strict';
+
+const LS_STUDENTS = 'anzan.students.v1';   // 生徒一覧キャッシュ
+const LS_PENDING  = 'anzan.pending.v1';    // 未送信の結果キュー
+const $ = id => document.getElementById(id);
+
+let students = [];
+let student = null;        // 選択中の生徒
+let level = null;          // 取り組むレベル定義
+let session = null;        // 進行中セッション {idx,total,correct,startTs,problem}
+let inputState = null;     // キーパッド入力状態
+let busy = false;          // ○×表示中などの入力ロック
+let resultSent = false;    // 二重送信防止
+
+/* ---------- 画面切替 ---------- */
+function show(id){
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  $(id).classList.add('active');
+}
+
+/* ---------- localStorage ---------- */
+function loadJSON(key, fallback){
+  try{ const v = JSON.parse(localStorage.getItem(key)); return v == null ? fallback : v; }
+  catch(e){ return fallback; }
+}
+function saveJSON(key, v){
+  try{ localStorage.setItem(key, JSON.stringify(v)); }catch(e){ /* 容量超過等は黙って無視 */ }
+}
+
+/* ---------- 通信 ---------- */
+function fetchWithTimeout(url, opts, ms){
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), ms);
+  return fetch(url, Object.assign({}, opts, {signal: ctrl.signal})).finally(() => clearTimeout(timer));
+}
+
+async function fetchStudents(){
+  const sep = CONFIG.GAS_URL.includes('?') ? '&' : '?';
+  const secretQ = CONFIG.SECRET ? '&secret=' + encodeURIComponent(CONFIG.SECRET) : '';
+  const res = await fetchWithTimeout(CONFIG.GAS_URL + sep + 'action=init' + secretQ, {method:'GET'}, 12000);
+  const data = await res.json();
+  if(!data || data.ok !== true || !Array.isArray(data.students)) throw new Error('bad response');
+  return data.students;
+}
+
+// 結果1件を POST。成功なら true。
+// CORS プリフライト回避のため Content-Type は text/plain 固定(application/json にしない)。
+async function postResult(payload){
+  try{
+    const res = await fetchWithTimeout(CONFIG.GAS_URL, {
+      method: 'POST',
+      headers: {'Content-Type': 'text/plain;charset=utf-8'},
+      body: JSON.stringify(payload)
+    }, 15000);
+    const data = await res.json();
+    return !!(data && data.ok === true);
+  }catch(e){
+    return false;
+  }
+}
+
+/* ---------- 未送信キュー ---------- */
+function pendingList(){ return loadJSON(LS_PENDING, []); }
+
+async function flushPending(){
+  if(!CONFIG.GAS_URL) return;
+  let queue = pendingList();
+  if(queue.length === 0) return;
+  const remain = [];
+  for(const item of queue){
+    const ok = await postResult(item);
+    if(!ok) remain.push(item);
+  }
+  saveJSON(LS_PENDING, remain);
+  updateResendButton();
+}
+
+function updateResendButton(){
+  const n = pendingList().length;
+  const btn = $('btn-resend');
+  if(n > 0 && CONFIG.GAS_URL){
+    btn.style.display = '';
+    btn.textContent = `おくれていないきろく ${n}けん をおくる`;
+  }else{
+    btn.style.display = 'none';
+  }
+}
+
+$('btn-resend').addEventListener('click', async () => {
+  const btn = $('btn-resend');
+  btn.disabled = true; btn.textContent = 'おくっています…';
+  await flushPending();
+  btn.disabled = false;
+  updateResendButton();
+  if(pendingList().length === 0) showBanner('きろくを ぜんぶ おくれました!');
+});
+
+/* ---------- 起動 ---------- */
+const DEMO_STUDENTS = [
+  {id:'001', name:'たろう', level:1}, {id:'002', name:'はなこ', level:12},
+  {id:'003', name:'けんた', level:24}, {id:'004', name:'ゆい', level:36},
+  {id:'005', name:'さくら', level:45}, {id:'006', name:'みお', level:46},
+  {id:'007', name:'りく', level:49}, {id:'008', name:'だいち', level:50}
+];
+
+async function boot(){
+  if(!CONFIG.GAS_URL){
+    students = DEMO_STUDENTS;
+    renderNames('GAS_URL が未設定のため「おためしモード」です(結果は送信されません)');
+    return;
+  }
+  try{
+    students = await fetchStudents();
+    saveJSON(LS_STUDENTS, {ts: Date.now(), students});
+    renderNames('');
+    flushPending();  // 前回送れなかった記録を裏で再送
+  }catch(e){
+    const cache = loadJSON(LS_STUDENTS, null);
+    if(cache && Array.isArray(cache.students) && cache.students.length){
+      students = cache.students;
+      const d = new Date(cache.ts);
+      renderNames(`つうしんできなかったので、まえにおぼえた めいぼ(${d.getMonth()+1}/${d.getDate()} じてん)をつかいます`);
+    }else{
+      show('scr-error');
+    }
+  }
+}
+
+/* ---------- なまえ選択 ---------- */
+function showBanner(msg){
+  $('names-banner').innerHTML = msg ? `<div class="banner">${msg}</div>` : '';
+}
+
+function renderNames(bannerMsg){
+  showBanner(bannerMsg);
+  updateResendButton();
+  const grid = $('name-grid');
+  grid.innerHTML = '';
+  const sorted = students.slice().sort((a, b) =>
+    String(a.id).localeCompare(String(b.id), 'ja', {numeric:true}) ||
+    String(a.name).localeCompare(String(b.name), 'ja'));
+  for(const s of sorted){
+    const lv = Math.min(50, Math.max(1, Number(s.level) || 1));
+    const tile = document.createElement('button');
+    tile.className = 'name-tile';
+    tile.innerHTML = `<span class="nm"></span><span class="meta"></span><span class="lv">Lv${lv}</span>`;
+    tile.querySelector('.nm').textContent = s.name;
+    tile.querySelector('.meta').textContent = s.id;
+    tile.addEventListener('click', () => selectStudent(s));
+    grid.appendChild(tile);
+  }
+  show('scr-names');
+}
+
+function selectStudent(s){
+  student = {id: s.id, name: s.name, level: Math.min(50, Math.max(1, Number(s.level) || 1))};
+  level = LEVEL_BY_ID[student.level];
+  $('st-name').textContent = `${student.name} さん`;
+  $('st-level').textContent = `Lv${level.id} ${level.label}`;
+  show('scr-start');
+}
+
+$('btn-back-names').addEventListener('click', () => { student = null; show('scr-names'); });
+$('btn-begin').addEventListener('click', startSession);
+$('btn-home').addEventListener('click', () => { session = null; updateResendButton(); show('scr-names'); });
+
+/* ---------- キーパッド ---------- */
+function buildKeypad(withDot){
+  const pad = $('keypad');
+  pad.innerHTML = '';
+  const keys = ['7','8','9','4','5','6','1','2','3', withDot ? '.' : '', '0', 'del'];
+  for(const k of keys){
+    const b = document.createElement('button');
+    b.className = 'key' + (k === '' ? ' ghost' : '') + (k === 'del' ? ' del' : '');
+    b.textContent = k === 'del' ? 'けす' : k;
+    if(k !== '') b.addEventListener('click', () => onKey(k));
+    pad.appendChild(b);
+  }
+}
+
+function newInputState(ansType){
+  if(ansType === 'frac') return {fields:['', ''], active:0, max:[2, 2], dot:false};
+  if(ansType === 'qr')   return {fields:['', ''], active:0, max:[2, 1], dot:false};
+  if(ansType === 'dec')  return {fields:[''], active:0, max:[5], dot:true};
+  return {fields:[''], active:0, max:[4], dot:false};
+}
+
+function renderAnswerArea(){
+  const area = $('ansarea');
+  const t = session.problem.ans.t;
+  const f = inputState.fields;
+  const box = (i, cls) =>
+    `<div class="abox ${cls || ''} ${inputState.active === i ? 'active' : ''}" data-fi="${i}">${f[i] || '&nbsp;'}</div>`;
+  if(t === 'frac'){
+    area.innerHTML = `<div class="frac-input">${box(0)}<div class="bar"></div>${box(1)}</div>`;
+  }else if(t === 'qr'){
+    area.innerHTML = `${box(0)}<span class="qr-label">あまり</span>${box(1)}`;
+  }else{
+    area.innerHTML = box(0);
+  }
+  area.querySelectorAll('.abox').forEach(el => {
+    el.addEventListener('click', () => {
+      inputState.active = Number(el.dataset.fi);
+      renderAnswerArea();
+    });
+  });
+}
+
+function onKey(k){
+  if(busy || !session) return;
+  const st = inputState, i = st.active;
+  if(k === 'del'){
+    st.fields[i] = st.fields[i].slice(0, -1);
+  }else if(k === '.'){
+    if(st.dot && !st.fields[i].includes('.') && st.fields[i].length < st.max[i]) st.fields[i] += '.';
+  }else{
+    if(st.fields[i].length < st.max[i]){
+      st.fields[i] += k;
+      // 枠がいっぱいになったら次の空き枠へ自動移動(分数・あまり用)
+      if(st.fields.length > 1 && st.fields[i].length >= st.max[i]){
+        const next = st.fields.findIndex(v => v === '');
+        if(next >= 0) st.active = next;
+      }
+    }
+  }
+  renderAnswerArea();
+}
+
+$('btn-submit').addEventListener('click', submitAnswer);
+
+/* ---------- セッション進行 ---------- */
+function startSession(){
+  session = {
+    idx: 0,
+    total: CONFIG.PROBLEMS_PER_SESSION,
+    correct: 0,
+    startTs: Date.now(),
+    problem: null
+  };
+  resultSent = false;
+  $('qz-who').textContent = `${student.name} さん / Lv${level.id}`;
+  nextProblem();
+  show('scr-quiz');
+}
+
+function nextProblem(){
+  session.idx++;
+  session.problem = makeProblem(level.id);
+  inputState = newInputState(session.problem.ans.t);
+  buildKeypad(session.problem.ans.t === 'dec');
+
+  const qEl = $('qtext');
+  qEl.innerHTML = session.problem.q;
+  const plainLen = session.problem.q.replace(/<[^>]*>/g, '').length;
+  qEl.classList.toggle('long', plainLen > 8);
+
+  $('qz-prog').textContent = `${session.idx} / ${session.total}`;
+  $('qz-bar').style.width = `${((session.idx - 1) / session.total) * 100}%`;
+  renderAnswerArea();
+}
+
+function submitAnswer(){
+  if(busy || !session) return;
+  const result = checkAnswer(session.problem.ans, inputState.fields);
+  if(result === null){
+    // 未入力の枠をフラッシュして知らせる
+    const emptyIdx = inputState.fields.findIndex(v => v === '' || v === '.');
+    if(emptyIdx >= 0){ inputState.active = emptyIdx; renderAnswerArea(); }
+    document.querySelectorAll('.abox').forEach(el => {
+      if(Number(el.dataset.fi) === emptyIdx){ el.classList.add('empty-flash'); }
+    });
+    return;
+  }
+  if(result) session.correct++;
+
+  const finish = () => {
+    if(session.idx >= session.total) endSession();
+    else nextProblem();
+  };
+
+  if(CONFIG.SHOW_IMMEDIATE_FEEDBACK){
+    busy = true;
+    const fb = $('feedback'), mark = $('fb-mark'), ansEl = $('fb-ans');
+    mark.textContent = result ? '○' : '×';
+    mark.className = result ? 'good' : 'bad';
+    if(!result){
+      ansEl.style.display = '';
+      ansEl.textContent = `こたえ: ${ansToText(session.problem.ans)}`;
+    }else{
+      ansEl.style.display = 'none';
+    }
+    fb.classList.add('show');
+    setTimeout(() => {
+      fb.classList.remove('show');
+      busy = false;
+      finish();
+    }, result ? 650 : 1500);
+  }else{
+    finish();
+  }
+}
+
+/* ---------- 結果 ---------- */
+async function endSession(){
+  const seconds = Math.max(1, Math.round((Date.now() - session.startTs) / 1000));
+  const total = session.total, correct = session.correct;
+  const rate = Math.round((correct / total) * 1000) / 1000;
+
+  $('rs-who').textContent = `${student.name} さん(Lv${level.id})`;
+  $('rs-total').textContent = total;
+  $('rs-correct').textContent = correct;
+  $('rs-rate').textContent = `${Math.round(rate * 100)}%`;
+  $('rs-time').textContent = seconds >= 60
+    ? `${Math.floor(seconds / 60)}ふん${seconds % 60}びょう`
+    : `${seconds}びょう`;
+  show('scr-result');
+
+  const payload = {
+    id: student.id, name: student.name, level: student.level,
+    total, correct, rate, seconds
+  };
+  if(CONFIG.SECRET) payload.secret = CONFIG.SECRET;
+
+  const st = $('send-status');
+  if(!CONFIG.GAS_URL){
+    st.className = 'ng';
+    st.textContent = 'おためしモードのため きろくは おくりません';
+    return;
+  }
+  if(resultSent) return;   // 二重送信防止
+  resultSent = true;
+
+  st.className = '';
+  st.textContent = 'きろくを おくっています…';
+  const ok = await postResult(payload);
+  if(ok){
+    st.className = 'ok';
+    st.textContent = 'きろくを おくりました!';
+  }else{
+    // 送信失敗 → localStorage に退避(次回起動時やボタンで再送)
+    const queue = pendingList();
+    queue.push(payload);
+    saveJSON(LS_PENDING, queue);
+    st.className = 'ng';
+    st.textContent = 'いま おくれなかったので、この iPad に ほぞんしたよ(あとで おくれます)';
+  }
+}
+
+/* ---------- 開始 ---------- */
+boot();
+})();
+</script>
+</body>
+</html>
